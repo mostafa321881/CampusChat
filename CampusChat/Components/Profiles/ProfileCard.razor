@@ -1,0 +1,18 @@
+<div class="card shadow-sm p-3">
+    <h4>Student Profile</h4>
+
+    <p><strong>Name:</strong> @DisplayName</p>
+    <p><strong>Bio:</strong> @Bio</p>
+    <p><strong>Study Year:</strong> @StudyYear</p>
+</div>
+
+@code {
+    [Parameter]
+    public string DisplayName { get; set; } = "";
+
+    [Parameter]
+    public string Bio { get; set; } = "";
+
+    [Parameter]
+    public int StudyYear { get; set; }
+}
