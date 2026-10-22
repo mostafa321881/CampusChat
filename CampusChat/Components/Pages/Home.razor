@@ -1,12 +1,27 @@
 ﻿@page "/"
-@using CampusChat.Components.Profiles
+@using CampusChat.Models
+@using CampusChat.Services
+@inject ProfileService ProfileService
 
-<PageTitle>CampusChat</PageTitle>
+<PageTitle>Home</PageTitle>
 
 <h1>Welcome to CampusChat</h1>
 
 <p>Student profiles</p>
 
-<ProfileCard DisplayName="Test Student"
-             Bio="Computer science student"
-             StudyYear="1" />
+@foreach (var student in students)
+{
+    <ProfileCard
+        DisplayName="@student.DisplayName"
+        Bio="@student.Bio"
+        StudyYear="@student.StudyYear" />
+}
+
+@code {
+    private List<StudentProfile> students = new();
+
+    protected override void OnInitialized()
+    {
+        students = ProfileService.GetProfiles();
+    }
+}
