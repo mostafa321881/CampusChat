@@ -1,4 +1,5 @@
-﻿using CampusChat.Models;
+﻿
+using CampusChat.Models;
 
 namespace CampusChat.Services;
 
@@ -78,5 +79,52 @@ public class ThreadService
         }
 
         return thread.MemberUserIds.Remove(userId);
+    }
+
+    /// <summary>
+    /// Creates a new public or private discussion thread.
+    /// </summary>
+    public bool CreateThread(
+        string name,
+        string description,
+        int createdByUserId,
+        bool isPrivate,
+        string accessCode)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        if (!_store.Users.Any(user => user.Id == createdByUserId))
+        {
+            return false;
+        }
+
+        if (isPrivate && string.IsNullOrWhiteSpace(accessCode))
+        {
+            return false;
+        }
+
+        int newId = _store.Threads.Count == 0
+            ? 1
+            : _store.Threads.Max(thread => thread.Id) + 1;
+
+        var newThread = new CampusChat.Models.Thread
+        {
+            Id = newId,
+            Name = name.Trim(),
+            Description = description,
+            CreatedByUserId = createdByUserId,
+            CreatedAt = DateTime.UtcNow,
+            IsPrivate = isPrivate,
+            AccessCode = isPrivate ? accessCode : ""
+        };
+
+        newThread.MemberUserIds.Add(createdByUserId);
+
+        _store.Threads.Add(newThread);
+
+        return true;
     }
 }

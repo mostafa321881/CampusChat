@@ -6,6 +6,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSingleton<CampusChat.Services.ProfileService>();
+builder.Services.AddSingleton<CampusChat.Services.CampusChatStore>();
+builder.Services.AddSingleton<CampusChat.Services.ThreadService>();
+builder.Services.AddScoped<CampusChat.Services.UserStateService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
