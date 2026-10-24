@@ -1,0 +1,16 @@
+﻿@page "/login"
+@rendermode InteractiveServer
+@using CampusChat.Services
+@inject UserStateService UserState
+@inject UserService UserService
+
+<h1>Select Student</h1>
+
+<p>Choose your student profile to use CampusChat.</p>
+
+<h3>Available Students</h3>
+
+@foreach (var user in UserService.GetAllUsers())
+{
+    <p>@user.DisplayName</p>
+}

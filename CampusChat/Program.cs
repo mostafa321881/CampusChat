@@ -9,6 +9,7 @@ builder.Services.AddSingleton<CampusChat.Services.ProfileService>();
 builder.Services.AddSingleton<CampusChat.Services.CampusChatStore>();
 builder.Services.AddSingleton<CampusChat.Services.ThreadService>();
 builder.Services.AddScoped<CampusChat.Services.UserStateService>();
+builder.Services.AddSingleton<CampusChat.Services.UserService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
