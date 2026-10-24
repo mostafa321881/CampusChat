@@ -3,14 +3,55 @@
 @using CampusChat.Services
 @inject UserStateService UserState
 @inject UserService UserService
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
 
 <h1>Select Student</h1>
 
 <p>Choose your student profile to use CampusChat.</p>
 
+@if (UserState.CurrentUserId != null)
+{
+    var selectedUser = UserService.GetUserById(UserState.CurrentUserId.Value);
+
+    <p class="text-success">
+        Selected student: @selectedUser?.DisplayName
+    </p>
+}
+
 <h3>Available Students</h3>
 
 @foreach (var user in UserService.GetAllUsers())
 {
-    <p>@user.DisplayName</p>
+    <div class="mb-3">
+        <span class="me-3">@user.DisplayName</span>
+
+        <button class="btn btn-primary"
+                @onclick="() => SelectStudent(user.Id)">
+            Select
+        </button>
+    </div>
+}
+
+@code {
+    private async Task SelectStudent(int userId)
+    {
+        UserState.SetCurrentUser(userId);
+
+        await SessionStorage.SetAsync("SelectedStudentId", userId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var result = await SessionStorage.GetAsync<int>("SelectedStudentId");
+
+            if (result.Success &&
+                UserService.GetUserById(result.Value) != null)
+            {
+                UserState.SetCurrentUser(result.Value);
+                StateHasChanged();
+            }
+        }
+    }
 }
