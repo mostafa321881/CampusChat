@@ -1,27 +1,14 @@
 ﻿@page "/"
-@using CampusChat.Models
-@using CampusChat.Services
-@inject ProfileService ProfileService
 
-<PageTitle>Home</PageTitle>
+<PageTitle>CampusChat - Home</PageTitle>
 
 <h1>Welcome to CampusChat</h1>
 
-<p>Student profiles</p>
+<p class="lead">
+    CampusChat is a place where students can
+    connect, discuss topics, and communicate.
+</p>
 
-@foreach (var student in students)
-{
-    <ProfileCard
-        DisplayName="@student.DisplayName"
-        Bio="@student.Bio"
-        StudyYear="@student.StudyYear" />
-}
-
-@code {
-    private List<StudentProfile> students = new();
-
-    protected override void OnInitialized()
-    {
-        students = ProfileService.GetProfiles();
-    }
-}
+<p>
+    Select a feature from the left sidebar to get started.
+</p>

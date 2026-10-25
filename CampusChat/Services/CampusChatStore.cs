@@ -8,6 +8,9 @@ public class CampusChatStore
 
     public List<CampusChat.Models.Thread> Threads { get; } = new();
 
+    // Stores posts and replies in discussion threads.
+    public List<Post> Posts { get; } = new();
+
     public CampusChatStore()
     {
         Users.Add(new User
@@ -19,6 +22,7 @@ public class CampusChatStore
             AvatarColor = "#4F46E5",
             IsAuditor = false
         });
+
         Users.Add(new User
         {
             Id = 2,

@@ -1,55 +1,243 @@
-﻿@page "/threads"
+﻿
+
+@page "/threads"
 @rendermode InteractiveServer
 @using CampusChat.Services
 @inject ThreadService ThreadService
 @inject UserStateService UserState
+@inject UserService UserService
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
 
-<h1>Discussion Threads</h1>
+<PageTitle>Discussion Threads - CampusChat</PageTitle>
 
-<p>Welcome to the CampusChat discussion threads.</p>
+<div class="container-fluid px-0">
 
-<h3>Create a Thread</h3>
+    <div class="mb-4">
+        <h1 class="fw-bold">Discussion Threads</h1>
+        <p class="text-muted">
+            Explore discussions, share ideas, and connect with students.
+        </p>
+    </div>
 
-<div class="mb-3">
-    <label class="form-label">Thread Name</label>
-    <input class="form-control" @bind="threadName" />
-</div>
+    <div class="card border-0 shadow-sm rounded-4 mb-5">
+        <div class="card-body p-4">
 
-<div class="mb-3">
-    <label class="form-label">Description</label>
-    <textarea class="form-control" @bind="threadDescription"></textarea>
-</div>
-<button class="btn btn-primary" @onclick="CreateThread">
-    Create Thread
-</button>
+            <h4 class="fw-semibold mb-3">Create a New Thread</h4>
 
-<h3>Available Threads</h3>
+            <div class="row g-3">
 
-@if (!ThreadService.GetAllThreads().Any())
-{
-    <p>No discussion threads available yet.</p>
-}
+                <div class="col-md-5">
+                    <label class="form-label fw-medium">
+                        Thread Name
+                    </label>
+                    <input class="form-control"
+                           placeholder="e.g. Programming Questions"
+                           @bind="threadName" />
+                </div>
 
-@foreach (var thread in ThreadService.GetAllThreads())
-{
-    <div class="card mb-3">
-        <div class="card-body">
-            <h4>@thread.Name</h4>
-            <p>@thread.Description</p>
-            <p>@(thread.IsPrivate ? "Private" : "Public")</p>
+                <div class="col-md-7">
+                    <label class="form-label fw-medium">
+                        Description
+                    </label>
+                    <textarea class="form-control"
+                              rows="2"
+                              placeholder="What is this discussion about?"
+                              @bind="threadDescription"></textarea>
+                </div>
+
+            </div>
+
+            <button class="btn btn-primary mt-3 px-4"
+                    disabled="@(!studentLoaded || UserState.CurrentUserId == null)"
+                    @onclick="CreateThread">
+                + Create Thread
+            </button>
+
+            @if (!studentLoaded)
+            {
+                <p class="text-muted mt-3">
+                    Loading student selection...
+                </p>
+            }
+            else if (UserState.CurrentUserId == null)
+            {
+                <p class="text-warning mt-3">
+                    Please <a href="/login">select a student</a>
+                    before creating a thread.
+                </p>
+            }
+
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div class="alert @(createdSuccessfully ? "alert-success" : "alert-warning") mt-3 mb-0">
+                    @message
+                </div>
+            }
+
         </div>
     </div>
-}
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="fw-bold mb-0">Available Threads</h3>
+        <span class="badge bg-secondary">
+            @ThreadService.GetAllThreads().Count threads
+        </span>
+    </div>
+
+    @if (!ThreadService.GetAllThreads().Any())
+    {
+        <div class="text-center border rounded-4 p-5">
+            <h5>No discussions yet</h5>
+            <p class="text-muted mb-0">
+                Create the first thread to get started.
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+
+            @foreach (var thread in ThreadService.GetAllThreads())
+            {
+                <div class="col-12 col-md-6 col-xl-4">
+
+                    <div class="card h-100 border rounded-4 shadow-sm thread-card">
+
+                        <div class="card-body p-4 d-flex flex-column">
+
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="text-primary fw-semibold small">
+                                    Discussion
+                                </span>
+
+                                @if (thread.IsPrivate)
+                                {
+                                    <span class="badge bg-secondary">
+                                        Private
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">
+                                        Public
+                                    </span>
+                                }
+                            </div>
+
+                            <h5 class="card-title fw-bold text-break">
+                                @thread.Name
+                            </h5>
+
+                            <p class="card-text text-muted thread-description">
+                                @(string.IsNullOrWhiteSpace(thread.Description)
+                                    ? "No description provided."
+                                    : thread.Description)
+                            </p>
+
+                            <div class="mt-auto pt-3 border-top">
+                                <span class="small text-muted">
+                                    @thread.MemberUserIds.Count members
+                                </span>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+            }
+
+        </div>
+    }
+
+</div>
+
+<style>
+    .thread-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .thread-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.09) !important;
+    }
+
+    .thread-description {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        min-height: 4.5em;
+    }
+</style>
 
 @code {
     private string threadName = "";
     private string threadDescription = "";
+    private string message = "";
+    private bool studentLoaded = false;
+    private bool createdSuccessfully = false;
 
     private void CreateThread()
     {
-        // We will connect this to ThreadService.CreateThread().
-    }
-}
+        createdSuccessfully = false;
 
-  
+        if (UserState.CurrentUserId == null)
+        {
+            message = "Please select a student first.";
+            return;
+        }
+
+        bool created = ThreadService.CreateThread(
+            threadName,
+            threadDescription,
+            UserState.CurrentUserId.Value,
+            false,
+            ""
+        );
+
+        if (created)
+        {
+            message = "Thread created successfully!";
+            createdSuccessfully = true;
+            threadName = "";
+            threadDescription = "";
+        }
+        else
+        {
+            message = "Could not create thread. Check the thread name.";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await SessionStorage.GetAsync<int>(
+                "SelectedStudentId"
+            );
+
+            if (result.Success &&
+                UserService.GetUserById(result.Value) != null)
+            {
+                UserState.SetCurrentUser(result.Value);
+            }
+        }
+        catch (Exception)
+        {
+            message = "Could not restore your student selection.";
+        }
+        finally
+        {
+            studentLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 }
