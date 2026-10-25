@@ -40,7 +40,7 @@ public class CampusChatStore
             Bio = "Computer science student",
             StudyYear = 3,
             AvatarColor = "#EA580C",
-            IsAuditor = false
+            IsAuditor = true
         });
     }
 }

@@ -1,8 +1,9 @@
 ﻿
-
 @page "/threads"
 @rendermode InteractiveServer
+
 @using CampusChat.Services
+
 @inject ThreadService ThreadService
 @inject UserStateService UserState
 @inject UserService UserService
@@ -14,39 +15,84 @@
 
     <div class="mb-4">
         <h1 class="fw-bold">Discussion Threads</h1>
+
         <p class="text-muted">
             Explore discussions, share ideas, and connect with students.
         </p>
     </div>
 
+    <!-- Create Thread Form -->
     <div class="card border-0 shadow-sm rounded-4 mb-5">
         <div class="card-body p-4">
 
-            <h4 class="fw-semibold mb-3">Create a New Thread</h4>
+            <h4 class="fw-semibold mb-3">
+                Create a New Thread
+            </h4>
 
             <div class="row g-3">
 
+                <!-- Thread Name -->
                 <div class="col-md-5">
                     <label class="form-label fw-medium">
                         Thread Name
                     </label>
+
                     <input class="form-control"
                            placeholder="e.g. Programming Questions"
                            @bind="threadName" />
                 </div>
 
+                <!-- Description -->
                 <div class="col-md-7">
                     <label class="form-label fw-medium">
                         Description
                     </label>
+
                     <textarea class="form-control"
                               rows="2"
                               placeholder="What is this discussion about?"
                               @bind="threadDescription"></textarea>
                 </div>
 
+                <!-- Public / Private Selection -->
+                <div class="col-md-5">
+                    <label class="form-label fw-medium">
+                        Thread Privacy
+                    </label>
+
+                    <select class="form-select"
+                            value="@(isPrivate ? "private" : "public")"
+                            @onchange="ChangePrivacy">
+
+                        <option value="public">Public</option>
+                        <option value="private">Private</option>
+
+                    </select>
+                </div>
+
+                <!-- Secret Code for Private Threads -->
+                @if (isPrivate)
+                {
+                    <div class="col-md-7">
+                        <label class="form-label fw-medium">
+                            Secret Code
+                        </label>
+
+                        <input type="password"
+                               class="form-control"
+                               placeholder="Create a secret code"
+                               autocomplete="new-password"
+                               @bind="accessCode" />
+
+                        <div class="form-text">
+                            Other students must enter this code to join.
+                        </div>
+                    </div>
+                }
+
             </div>
 
+            <!-- Create Button -->
             <button class="btn btn-primary mt-3 px-4"
                     disabled="@(!studentLoaded || UserState.CurrentUserId == null)"
                     @onclick="CreateThread">
@@ -77,17 +123,24 @@
         </div>
     </div>
 
+    <!-- Available Threads -->
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3 class="fw-bold mb-0">Available Threads</h3>
+
+        <h3 class="fw-bold mb-0">
+            Available Threads
+        </h3>
+
         <span class="badge bg-secondary">
             @ThreadService.GetAllThreads().Count threads
         </span>
+
     </div>
 
     @if (!ThreadService.GetAllThreads().Any())
     {
         <div class="text-center border rounded-4 p-5">
             <h5>No discussions yet</h5>
+
             <p class="text-muted mb-0">
                 Create the first thread to get started.
             </p>
@@ -106,6 +159,7 @@
                         <div class="card-body p-4 d-flex flex-column">
 
                             <div class="d-flex justify-content-between align-items-center mb-3">
+
                                 <span class="text-primary fw-semibold small">
                                     Discussion
                                 </span>
@@ -122,6 +176,7 @@
                                         Public
                                     </span>
                                 }
+
                             </div>
 
                             <h5 class="card-title fw-bold text-break">
@@ -134,10 +189,19 @@
                                     : thread.Description)
                             </p>
 
-                            <div class="mt-auto pt-3 border-top">
+                            <div class="mt-auto pt-3 border-top d-flex justify-content-between align-items-center gap-2">
+
                                 <span class="small text-muted">
                                     @thread.MemberUserIds.Count members
                                 </span>
+
+                                <a class="btn btn-sm btn-outline-primary"
+                                   href="@($"/threads/{thread.Id}")">
+
+                                    @(thread.IsPrivate ? "Join / Open" : "Open Thread")
+
+                                </a>
+
                             </div>
 
                         </div>
@@ -176,13 +240,29 @@
 @code {
     private string threadName = "";
     private string threadDescription = "";
+    private string accessCode = "";
     private string message = "";
+
+    private bool isPrivate = false;
     private bool studentLoaded = false;
     private bool createdSuccessfully = false;
 
+    // Updates the privacy selection.
+    private void ChangePrivacy(ChangeEventArgs e)
+    {
+        isPrivate = e.Value?.ToString() == "private";
+
+        if (!isPrivate)
+        {
+            accessCode = "";
+        }
+    }
+
+    // Creates a public or private thread.
     private void CreateThread()
     {
         createdSuccessfully = false;
+        message = "";
 
         if (UserState.CurrentUserId == null)
         {
@@ -190,27 +270,46 @@
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(threadName))
+        {
+            message = "Please enter a thread name.";
+            return;
+        }
+
+        if (isPrivate && string.IsNullOrWhiteSpace(accessCode))
+        {
+            message = "Please create a secret code for the private thread.";
+            return;
+        }
+
         bool created = ThreadService.CreateThread(
             threadName,
             threadDescription,
             UserState.CurrentUserId.Value,
-            false,
-            ""
+            isPrivate,
+            accessCode
         );
 
         if (created)
         {
-            message = "Thread created successfully!";
+            message = isPrivate
+                ? "Private thread created successfully!"
+                : "Public thread created successfully!";
+
             createdSuccessfully = true;
+
             threadName = "";
             threadDescription = "";
+            accessCode = "";
+            isPrivate = false;
         }
         else
         {
-            message = "Could not create thread. Check the thread name.";
+            message = "Could not create thread. Check your inputs.";
         }
     }
 
+    // Restores the selected student after refreshing.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)

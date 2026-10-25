@@ -3,6 +3,9 @@ using CampusChat.Models;
 
 namespace CampusChat.Services;
 
+/// <summary>
+/// Manages discussion threads and their access rules.
+/// </summary>
 public class ThreadService
 {
     private readonly CampusChatStore _store;
@@ -13,7 +16,7 @@ public class ThreadService
     }
 
     /// <summary>
-    /// Returns all available threads.
+    /// Returns all threads, including public names of private threads.
     /// </summary>
     public List<CampusChat.Models.Thread> GetAllThreads()
     {
@@ -21,10 +24,24 @@ public class ThreadService
     }
 
     /// <summary>
+    /// Finds a thread by its ID.
+    /// </summary>
+    public CampusChat.Models.Thread? GetThreadById(int threadId)
+    {
+        return _store.Threads
+            .FirstOrDefault(thread => thread.Id == threadId);
+    }
+
+    /// <summary>
     /// Searches for threads by name.
     /// </summary>
     public List<CampusChat.Models.Thread> SearchThreads(string searchText)
     {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return GetAllThreads();
+        }
+
         return _store.Threads
             .Where(thread => thread.Name.Contains(
                 searchText,
@@ -33,29 +50,59 @@ public class ThreadService
     }
 
     /// <summary>
-    /// Attempts to join a thread.
+    /// Checks whether a user can read a thread.
+    /// Public threads are readable by students.
+    /// Private threads require membership, except for auditors.
+    /// </summary>
+    public bool CanReadThread(int threadId, int userId)
+    {
+        var thread = GetThreadById(threadId);
+
+        var user = _store.Users
+            .FirstOrDefault(student => student.Id == userId);
+
+        if (thread == null || user == null)
+        {
+            return false;
+        }
+
+        if (!thread.IsPrivate)
+        {
+            return true;
+        }
+
+        if (user.IsAuditor)
+        {
+            return true;
+        }
+
+        return thread.MemberUserIds.Contains(userId);
+    }
+
+    /// <summary>
+    /// Joins a thread. Private threads require the correct code,
+    /// unless the user is an auditor.
     /// </summary>
     public bool JoinThread(int threadId, int userId, string accessCode)
     {
-        var thread = _store.Threads
-            .FirstOrDefault(t => t.Id == threadId);
+        var thread = GetThreadById(threadId);
 
-        if (thread == null)
-        {
-            return false;
-        }
+        var user = _store.Users
+            .FirstOrDefault(student => student.Id == userId);
 
-        if (!_store.Users.Any(user => user.Id == userId))
-        {
-            return false;
-        }
-
-        if (thread.IsPrivate && thread.AccessCode != accessCode)
+        if (thread == null || user == null)
         {
             return false;
         }
 
         if (thread.MemberUserIds.Contains(userId))
+        {
+            return false;
+        }
+
+        if (thread.IsPrivate &&
+            !user.IsAuditor &&
+            thread.AccessCode != accessCode)
         {
             return false;
         }
@@ -70,8 +117,7 @@ public class ThreadService
     /// </summary>
     public bool LeaveThread(int threadId, int userId)
     {
-        var thread = _store.Threads
-            .FirstOrDefault(t => t.Id == threadId);
+        var thread = GetThreadById(threadId);
 
         if (thread == null)
         {

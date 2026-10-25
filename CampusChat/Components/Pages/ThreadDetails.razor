@@ -1,0 +1,440 @@
+﻿
+@page "/threads/{ThreadId:int}"
+@rendermode InteractiveServer
+
+@using CampusChat.Services
+@using CampusChat.Models
+
+@inject ThreadService ThreadService
+@inject PostService PostService
+@inject UserService UserService
+@inject UserStateService UserState
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
+
+<PageTitle>Thread Details - CampusChat</PageTitle>
+
+<div class="container-fluid px-0">
+
+    <a href="/threads" class="btn btn-outline-secondary mb-4">
+        Back to Threads
+    </a>
+
+    @if (currentThread == null)
+    {
+        <div class="alert alert-warning">
+            Thread not found.
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="fw-bold">@currentThread.Name</h2>
+
+                <p class="text-muted">
+                    @currentThread.Description
+                </p>
+
+                <span class="badge @(currentThread.IsPrivate ? "bg-secondary" : "bg-success")">
+                    @(currentThread.IsPrivate ? "Private" : "Public")
+                </span>
+
+                <span class="text-muted small ms-2">
+                    @currentThread.MemberUserIds.Count members
+                </span>
+
+            </div>
+        </div>
+
+        @if (!studentLoaded)
+        {
+            <p>Loading student selection...</p>
+        }
+        else if (UserState.CurrentUserId == null)
+        {
+            <div class="alert alert-warning">
+                Please <a href="/login">select a student</a>
+                to participate.
+            </div>
+        }
+        else if (!CanViewThread())
+        {
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+
+                    <h4 class="fw-bold">Private Thread</h4>
+
+                    <p class="text-muted">
+                        Enter the secret code to join this discussion.
+                    </p>
+
+                    <label class="form-label">
+                        Secret Code
+                    </label>
+
+                    <input type="password"
+                           class="form-control mb-3"
+                           placeholder="Enter the thread secret code"
+                           autocomplete="off"
+                           @bind="joinAccessCode" />
+
+                    <button class="btn btn-primary"
+                            @onclick="JoinPrivateThread">
+                        Join Thread
+                    </button>
+
+                    @if (!string.IsNullOrEmpty(message))
+                    {
+                        <div class="alert alert-warning mt-3 mb-0">
+                            @message
+                        </div>
+                    }
+
+                </div>
+            </div>
+        }
+        else
+        {
+            @if (IsAuditor() &&
+                 currentThread.IsPrivate &&
+                 !currentThread.MemberUserIds.Contains(UserState.CurrentUserId.Value))
+            {
+                <div class="alert alert-info">
+                    Auditor access: You can read this private thread
+                    without entering its secret code.
+                </div>
+            }
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+
+                    <h4>Write a Post</h4>
+
+                    <textarea class="form-control mb-3"
+                              rows="3"
+                              placeholder="Write your message..."
+                              @bind="newPostContent"></textarea>
+
+                    <button class="btn btn-primary"
+                            disabled="@(!CanWriteThread())"
+                            @onclick="AddPost">
+                        Post Message
+                    </button>
+
+                    @if (!string.IsNullOrEmpty(message))
+                    {
+                        <p class="mt-3">@message</p>
+                    }
+
+                </div>
+            </div>
+
+            <h3 class="fw-bold mb-3">Discussion</h3>
+
+            @if (!GetVisiblePosts().Any())
+            {
+                <p class="text-muted">
+                    No posts yet. Start the discussion!
+                </p>
+            }
+            else
+            {
+                @foreach (var post in GetVisiblePosts())
+                {
+                    <div class="card mb-3">
+                        <div class="card-body">
+
+                            <div class="d-flex justify-content-between gap-3">
+                                <strong>
+                                    @UserService.GetUserById(post.AuthorUserId)?.DisplayName
+                                </strong>
+
+                                <small class="text-muted">
+                                    @post.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+                                </small>
+                            </div>
+
+                            <p class="mt-3">@post.Content</p>
+
+                            @if (post.ParentPostId != null)
+                            {
+                                <span class="badge bg-light text-dark">
+                                    Reply to post #@post.ParentPostId
+                                </span>
+                            }
+
+                            <div class="mt-3">
+
+                                @if (CanWriteThread())
+                                {
+                                    <button class="btn btn-sm btn-outline-primary me-2"
+                                            @onclick="() => StartReply(post.Id)">
+                                        Reply
+                                    </button>
+                                }
+
+                                @if (post.AuthorUserId == UserState.CurrentUserId)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            @onclick="() => DeletePost(post.Id)">
+                                        Delete
+                                    </button>
+                                }
+
+                            </div>
+
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (replyToPostId != null && CanWriteThread())
+            {
+                <div class="card mt-4">
+                    <div class="card-body">
+
+                        <h5>Reply to post #@replyToPostId</h5>
+
+                        <textarea class="form-control mb-3"
+                                  rows="2"
+                                  @bind="replyContent"></textarea>
+
+                        <button class="btn btn-primary me-2"
+                                @onclick="SubmitReply">
+                            Send Reply
+                        </button>
+
+                        <button class="btn btn-outline-secondary"
+                                @onclick="CancelReply">
+                            Cancel
+                        </button>
+
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int ThreadId { get; set; }
+
+    private CampusChat.Models.Thread? currentThread;
+
+    private string newPostContent = "";
+    private string replyContent = "";
+    private string joinAccessCode = "";
+    private string message = "";
+
+    private int? replyToPostId;
+    private bool studentLoaded;
+
+    protected override void OnParametersSet()
+    {
+        currentThread = ThreadService.GetThreadById(ThreadId);
+
+        message = "";
+        joinAccessCode = "";
+        replyToPostId = null;
+    }
+
+    private bool IsAuditor()
+    {
+        if (UserState.CurrentUserId == null)
+        {
+            return false;
+        }
+
+        return UserService
+            .GetUserById(UserState.CurrentUserId.Value)?
+            .IsAuditor == true;
+    }
+
+    private bool CanViewThread()
+    {
+        if (currentThread == null ||
+            UserState.CurrentUserId == null)
+        {
+            return false;
+        }
+
+        return ThreadService.CanReadThread(
+            ThreadId,
+            UserState.CurrentUserId.Value
+        );
+    }
+
+    private bool CanWriteThread()
+    {
+        if (currentThread == null ||
+            UserState.CurrentUserId == null)
+        {
+            return false;
+        }
+
+        // Auditor read access does not automatically grant
+        // permission to write in a private thread.
+        return !currentThread.IsPrivate ||
+               currentThread.MemberUserIds.Contains(
+                   UserState.CurrentUserId.Value
+               );
+    }
+
+    private List<Post> GetVisiblePosts()
+    {
+        if (UserState.CurrentUserId == null ||
+            !CanViewThread())
+        {
+            return new List<Post>();
+        }
+
+        return PostService.GetPostsByThread(
+            ThreadId,
+            UserState.CurrentUserId.Value
+        );
+    }
+
+    private void JoinPrivateThread()
+    {
+        if (UserState.CurrentUserId == null ||
+            currentThread == null)
+        {
+            return;
+        }
+
+        bool joined = ThreadService.JoinThread(
+            ThreadId,
+            UserState.CurrentUserId.Value,
+            joinAccessCode
+        );
+
+        if (joined)
+        {
+            joinAccessCode = "";
+            message = "You joined the thread successfully!";
+        }
+        else
+        {
+            message = "Incorrect secret code. Please try again.";
+        }
+    }
+
+    private void AddPost()
+    {
+        if (UserState.CurrentUserId == null ||
+            !CanWriteThread())
+        {
+            message = "You do not have permission to post here.";
+            return;
+        }
+
+        var post = PostService.CreatePost(
+            ThreadId,
+            UserState.CurrentUserId.Value,
+            newPostContent
+        );
+
+        if (post == null)
+        {
+            message = "Could not create post. Please enter a message.";
+            return;
+        }
+
+        newPostContent = "";
+        message = "Post created successfully!";
+    }
+
+    private void StartReply(int postId)
+    {
+        if (!CanWriteThread())
+        {
+            return;
+        }
+
+        replyToPostId = postId;
+        replyContent = "";
+    }
+
+    private void SubmitReply()
+    {
+        if (UserState.CurrentUserId == null ||
+            replyToPostId == null ||
+            !CanWriteThread())
+        {
+            return;
+        }
+
+        var reply = PostService.CreatePost(
+            ThreadId,
+            UserState.CurrentUserId.Value,
+            replyContent,
+            replyToPostId
+        );
+
+        if (reply == null)
+        {
+            message = "Could not send reply. Please enter a message.";
+            return;
+        }
+
+        replyContent = "";
+        replyToPostId = null;
+        message = "Reply sent successfully!";
+    }
+
+    private void DeletePost(int postId)
+    {
+        if (UserState.CurrentUserId == null ||
+            !CanWriteThread())
+        {
+            return;
+        }
+
+        bool deleted = PostService.DeletePost(
+            postId,
+            UserState.CurrentUserId.Value
+        );
+
+        message = deleted
+            ? "Post deleted successfully!"
+            : "You can only delete your own posts.";
+    }
+
+    private void CancelReply()
+    {
+        replyToPostId = null;
+        replyContent = "";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await SessionStorage.GetAsync<int>(
+                "SelectedStudentId"
+            );
+
+            if (result.Success &&
+                UserService.GetUserById(result.Value) != null)
+            {
+                UserState.SetCurrentUser(result.Value);
+            }
+        }
+        catch (Exception)
+        {
+            message = "Could not restore student selection.";
+        }
+        finally
+        {
+            studentLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

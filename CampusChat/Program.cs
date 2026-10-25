@@ -11,6 +11,7 @@ builder.Services.AddSingleton<CampusChat.Services.ThreadService>();
 builder.Services.AddScoped<CampusChat.Services.UserStateService>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage>();
 builder.Services.AddSingleton<CampusChat.Services.UserService>();
+builder.Services.AddSingleton<CampusChat.Services.PostService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
