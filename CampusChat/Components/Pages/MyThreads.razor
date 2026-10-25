@@ -1,0 +1,254 @@
+﻿
+@page "/my-threads"
+@rendermode InteractiveServer
+
+@using CampusChat.Services
+@using CampusChat.Models
+
+@inject ThreadService ThreadService
+@inject UserStateService UserState
+@inject UserService UserService
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
+
+<PageTitle>My Threads - CampusChat</PageTitle>
+
+<div class="container-fluid px-0">
+
+    <div class="mb-4">
+        <h1 class="fw-bold">My Threads</h1>
+
+        <p class="text-muted">
+            View and manage the discussions you have joined.
+        </p>
+    </div>
+
+    @if (!studentLoaded)
+    {
+        <div class="alert alert-info">
+            Loading student selection...
+        </div>
+    }
+    else if (UserState.CurrentUserId == null)
+    {
+        <div class="alert alert-warning">
+            Please <a href="/login">select a student</a>
+            to view your threads.
+        </div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <h3 class="fw-bold mb-0">
+                Joined Threads
+            </h3>
+
+            <span class="badge bg-secondary">
+                @GetMyThreads().Count threads
+            </span>
+
+        </div>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(actionSuccessful ? "alert-success" : "alert-warning") mb-4">
+                @message
+            </div>
+        }
+
+        @if (!GetMyThreads().Any())
+        {
+            <div class="text-center border rounded-4 p-5">
+
+                <h5>You haven't joined any threads yet</h5>
+
+                <p class="text-muted">
+                    Explore available discussions and join one to get started.
+                </p>
+
+                <a href="/threads" class="btn btn-primary">
+                    Browse Threads
+                </a>
+
+            </div>
+        }
+        else
+        {
+            <div class="row g-4">
+
+                @foreach (var thread in GetMyThreads())
+                {
+                    <div class="col-12 col-md-6 col-xl-4">
+
+                        <div class="card h-100 border rounded-4 shadow-sm thread-card">
+
+                            <div class="card-body p-4 d-flex flex-column">
+
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+
+                                    <span class="text-primary fw-semibold small">
+                                        Discussion
+                                    </span>
+
+                                    @if (thread.IsPrivate)
+                                    {
+                                        <span class="badge bg-secondary">
+                                            Private
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">
+                                            Public
+                                        </span>
+                                    }
+
+                                </div>
+
+                                <h5 class="card-title fw-bold text-break">
+                                    @thread.Name
+                                </h5>
+
+                                <p class="card-text text-muted thread-description">
+                                    @(string.IsNullOrWhiteSpace(thread.Description)
+                                        ? "No description provided."
+                                        : thread.Description)
+                                </p>
+
+                                <div class="small text-muted mb-3">
+                                    @thread.MemberUserIds.Count members
+                                </div>
+
+                                <div class="mt-auto pt-3 border-top d-flex flex-wrap gap-2">
+
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       href="@($"/threads/{thread.Id}")">
+                                        Open Thread
+                                    </a>
+
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            @onclick="() => LeaveThread(thread.Id)">
+                                        Leave Thread
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                }
+
+            </div>
+        }
+    }
+
+</div>
+
+<style>
+    .thread-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .thread-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.09) !important;
+    }
+
+    .thread-description {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        min-height: 4.5em;
+    }
+</style>
+
+@code {
+    private bool studentLoaded = false;
+    private bool actionSuccessful = false;
+    private string message = "";
+
+    /// <summary>
+    /// Returns only threads the selected student has joined.
+    /// </summary>
+    private List<CampusChat.Models.Thread> GetMyThreads()
+    {
+        if (UserState.CurrentUserId == null)
+        {
+            return new List<CampusChat.Models.Thread>();
+        }
+
+        int userId = UserState.CurrentUserId.Value;
+
+        return ThreadService.GetAllThreads()
+            .Where(thread => thread.MemberUserIds.Contains(userId))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Removes the selected student from a thread.
+    /// </summary>
+    private void LeaveThread(int threadId)
+    {
+        actionSuccessful = false;
+        message = "";
+
+        if (UserState.CurrentUserId == null)
+        {
+            message = "Please select a student first.";
+            return;
+        }
+
+        bool left = ThreadService.LeaveThread(
+            threadId,
+            UserState.CurrentUserId.Value
+        );
+
+        if (left)
+        {
+            actionSuccessful = true;
+            message = "You have left the thread successfully.";
+        }
+        else
+        {
+            message = "Could not leave the thread.";
+        }
+    }
+
+    /// <summary>
+    /// Restores the selected student after a page refresh.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await SessionStorage.GetAsync<int>(
+                "SelectedStudentId"
+            );
+
+            if (result.Success &&
+                UserService.GetUserById(result.Value) != null)
+            {
+                UserState.SetCurrentUser(result.Value);
+            }
+        }
+        catch (Exception)
+        {
+            message = "Could not restore your student selection.";
+        }
+        finally
+        {
+            studentLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

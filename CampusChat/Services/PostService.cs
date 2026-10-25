@@ -5,6 +5,7 @@ namespace CampusChat.Services;
 
 /// <summary>
 /// Manages posts and replies inside discussion threads.
+/// Enforces separate reading and writing permissions.
 /// </summary>
 public class PostService
 {
@@ -17,11 +18,12 @@ public class PostService
 
     /// <summary>
     /// Returns posts from a thread in chronological order.
-    /// Private thread posts are visible only to members.
+    /// Public posts are readable by all valid users.
+    /// Private posts are readable by members and auditors.
     /// </summary>
     public List<Post> GetPostsByThread(int threadId, int userId)
     {
-        if (!CanAccessThread(threadId, userId))
+        if (!CanReadThread(threadId, userId))
         {
             return new List<Post>();
         }
@@ -33,7 +35,8 @@ public class PostService
     }
 
     /// <summary>
-    /// Creates a post or a reply inside a thread.
+    /// Creates a post or reply inside a thread.
+    /// Private threads require membership, including for auditors.
     /// </summary>
     public Post? CreatePost(
         int threadId,
@@ -46,7 +49,7 @@ public class PostService
             return null;
         }
 
-        if (!CanAccessThread(threadId, authorUserId))
+        if (!CanWriteThread(threadId, authorUserId))
         {
             return null;
         }
@@ -83,7 +86,8 @@ public class PostService
     }
 
     /// <summary>
-    /// Deletes a post only if the requesting user wrote it.
+    /// Deletes a post only if the requesting user wrote it
+    /// and still has permission to write in that thread.
     /// Replies to the deleted post are also removed.
     /// </summary>
     public bool DeletePost(int postId, int userId)
@@ -91,7 +95,17 @@ public class PostService
         var post = _store.Posts.FirstOrDefault(
             item => item.Id == postId);
 
-        if (post == null || post.AuthorUserId != userId)
+        if (post == null)
+        {
+            return false;
+        }
+
+        if (post.AuthorUserId != userId)
+        {
+            return false;
+        }
+
+        if (!CanWriteThread(post.ThreadId, userId))
         {
             return false;
         }
@@ -102,32 +116,62 @@ public class PostService
     }
 
     /// <summary>
-    /// Checks whether a student can access a thread.
+    /// Checks whether a user can read a thread.
+    /// Auditors can read private threads without joining.
     /// </summary>
-    private bool CanAccessThread(int threadId, int userId)
+    private bool CanReadThread(int threadId, int userId)
     {
-        bool userExists = _store.Users.Any(
-            user => user.Id == userId);
-
-        if (!userExists)
-        {
-            return false;
-        }
+        var user = _store.Users.FirstOrDefault(
+            item => item.Id == userId);
 
         var thread = _store.Threads.FirstOrDefault(
             item => item.Id == threadId);
 
-        if (thread == null)
+        if (user == null || thread == null)
         {
             return false;
         }
 
-        return !thread.IsPrivate ||
-               thread.MemberUserIds.Contains(userId);
+        if (!thread.IsPrivate)
+        {
+            return true;
+        }
+
+        if (user.IsAuditor)
+        {
+            return true;
+        }
+
+        return thread.MemberUserIds.Contains(userId);
     }
 
     /// <summary>
-    /// Removes a post and its replies recursively.
+    /// Checks whether a user can write posts or replies.
+    /// Auditors must also be members to write in private threads.
+    /// </summary>
+    private bool CanWriteThread(int threadId, int userId)
+    {
+        var user = _store.Users.FirstOrDefault(
+            item => item.Id == userId);
+
+        var thread = _store.Threads.FirstOrDefault(
+            item => item.Id == threadId);
+
+        if (user == null || thread == null)
+        {
+            return false;
+        }
+
+        if (!thread.IsPrivate)
+        {
+            return true;
+        }
+
+        return thread.MemberUserIds.Contains(userId);
+    }
+
+    /// <summary>
+    /// Removes a post and all its replies recursively.
     /// </summary>
     private void DeletePostAndReplies(int postId)
     {

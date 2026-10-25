@@ -58,160 +58,214 @@
                 to participate.
             </div>
         }
-        else if (!CanViewThread())
-        {
-            <div class="card border-0 shadow-sm rounded-4 mb-4">
-                <div class="card-body p-4">
-
-                    <h4 class="fw-bold">Private Thread</h4>
-
-                    <p class="text-muted">
-                        Enter the secret code to join this discussion.
-                    </p>
-
-                    <label class="form-label">
-                        Secret Code
-                    </label>
-
-                    <input type="password"
-                           class="form-control mb-3"
-                           placeholder="Enter the thread secret code"
-                           autocomplete="off"
-                           @bind="joinAccessCode" />
-
-                    <button class="btn btn-primary"
-                            @onclick="JoinPrivateThread">
-                        Join Thread
-                    </button>
-
-                    @if (!string.IsNullOrEmpty(message))
-                    {
-                        <div class="alert alert-warning mt-3 mb-0">
-                            @message
-                        </div>
-                    }
-
-                </div>
-            </div>
-        }
         else
         {
-            @if (IsAuditor() &&
-                 currentThread.IsPrivate &&
-                 !currentThread.MemberUserIds.Contains(UserState.CurrentUserId.Value))
+            @if (!IsMember())
             {
-                <div class="alert alert-info">
-                    Auditor access: You can read this private thread
-                    without entering its secret code.
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+
+                        @if (currentThread.IsPrivate && !IsAuditor())
+                        {
+                            <h4 class="fw-bold">Join Private Thread</h4>
+
+                            <p class="text-muted">
+                                Enter the correct secret code to join
+                                and read this discussion.
+                            </p>
+
+                            <label class="form-label">
+                                Secret Code
+                            </label>
+
+                            <input type="password"
+                                   class="form-control mb-3"
+                                   placeholder="Enter the thread secret code"
+                                   autocomplete="off"
+                                   @bind="joinAccessCode" />
+
+                            <button class="btn btn-primary"
+                                    @onclick="JoinThread">
+                                Join Private Thread
+                            </button>
+                        }
+                        else if (currentThread.IsPrivate && IsAuditor())
+                        {
+                            <h4 class="fw-bold">Auditor Access</h4>
+
+                            <p class="text-muted">
+                                You can read this private discussion
+                                without entering its secret code.
+                                Join the thread if you want to write posts.
+                            </p>
+
+                            <button class="btn btn-primary"
+                                    @onclick="JoinThread">
+                                Join Thread
+                            </button>
+                        }
+                        else
+                        {
+                            <h4 class="fw-bold">Join This Thread</h4>
+
+                            <p class="text-muted">
+                                This thread is public.
+                                You can read its posts without joining.
+                                Join to add it to My Threads.
+                            </p>
+
+                            <button class="btn btn-primary"
+                                    @onclick="JoinThread">
+                                Join Thread
+                            </button>
+                        }
+
+                    </div>
                 </div>
             }
 
-            <div class="card border-0 shadow-sm rounded-4 mb-4">
-                <div class="card-body p-4">
-
-                    <h4>Write a Post</h4>
-
-                    <textarea class="form-control mb-3"
-                              rows="3"
-                              placeholder="Write your message..."
-                              @bind="newPostContent"></textarea>
-
-                    <button class="btn btn-primary"
-                            disabled="@(!CanWriteThread())"
-                            @onclick="AddPost">
-                        Post Message
-                    </button>
-
-                    @if (!string.IsNullOrEmpty(message))
-                    {
-                        <p class="mt-3">@message</p>
-                    }
-
-                </div>
-            </div>
-
-            <h3 class="fw-bold mb-3">Discussion</h3>
-
-            @if (!GetVisiblePosts().Any())
+            @if (!string.IsNullOrEmpty(joinMessage))
             {
-                <p class="text-muted">
-                    No posts yet. Start the discussion!
-                </p>
+                <div class="alert @(joinSuccessful ? "alert-success" : "alert-warning") mb-4">
+                    @joinMessage
+                </div>
+            }
+
+            @if (!CanViewThread())
+            {
+                <div class="alert alert-warning">
+                    This is a private thread.
+                    Enter the correct secret code to read its posts.
+                </div>
             }
             else
             {
-                @foreach (var post in GetVisiblePosts())
+                @if (IsAuditor() &&
+                     currentThread.IsPrivate &&
+                     !IsMember())
                 {
-                    <div class="card mb-3">
-                        <div class="card-body">
+                    <div class="alert alert-info">
+                        Auditor read-only access is active.
+                        Join this thread to write posts or replies.
+                    </div>
+                }
 
-                            <div class="d-flex justify-content-between gap-3">
-                                <strong>
-                                    @UserService.GetUserById(post.AuthorUserId)?.DisplayName
-                                </strong>
+                @if (CanWriteThread())
+                {
+                    <div class="card border-0 shadow-sm rounded-4 mb-4">
+                        <div class="card-body p-4">
 
-                                <small class="text-muted">
-                                    @post.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")
-                                </small>
-                            </div>
+                            <h4>Write a Post</h4>
 
-                            <p class="mt-3">@post.Content</p>
+                            <textarea class="form-control mb-3"
+                                      rows="3"
+                                      placeholder="Write your message..."
+                                      @bind="newPostContent"></textarea>
 
-                            @if (post.ParentPostId != null)
+                            <button class="btn btn-primary"
+                                    @onclick="AddPost">
+                                Post Message
+                            </button>
+
+                            @if (!string.IsNullOrEmpty(message))
                             {
-                                <span class="badge bg-light text-dark">
-                                    Reply to post #@post.ParentPostId
-                                </span>
+                                <p class="mt-3">@message</p>
                             }
-
-                            <div class="mt-3">
-
-                                @if (CanWriteThread())
-                                {
-                                    <button class="btn btn-sm btn-outline-primary me-2"
-                                            @onclick="() => StartReply(post.Id)">
-                                        Reply
-                                    </button>
-                                }
-
-                                @if (post.AuthorUserId == UserState.CurrentUserId)
-                                {
-                                    <button class="btn btn-sm btn-outline-danger"
-                                            @onclick="() => DeletePost(post.Id)">
-                                        Delete
-                                    </button>
-                                }
-
-                            </div>
 
                         </div>
                     </div>
                 }
-            }
-
-            @if (replyToPostId != null && CanWriteThread())
-            {
-                <div class="card mt-4">
-                    <div class="card-body">
-
-                        <h5>Reply to post #@replyToPostId</h5>
-
-                        <textarea class="form-control mb-3"
-                                  rows="2"
-                                  @bind="replyContent"></textarea>
-
-                        <button class="btn btn-primary me-2"
-                                @onclick="SubmitReply">
-                            Send Reply
-                        </button>
-
-                        <button class="btn btn-outline-secondary"
-                                @onclick="CancelReply">
-                            Cancel
-                        </button>
-
+                else
+                {
+                    <div class="alert alert-secondary">
+                        Join this private thread to write posts and replies.
                     </div>
-                </div>
+                }
+
+                <h3 class="fw-bold mb-3">Discussion</h3>
+
+                @if (!GetVisiblePosts().Any())
+                {
+                    <p class="text-muted">
+                        No posts yet. Start the discussion!
+                    </p>
+                }
+                else
+                {
+                    @foreach (var post in GetVisiblePosts())
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body">
+
+                                <div class="d-flex justify-content-between gap-3">
+                                    <strong>
+                                        @UserService.GetUserById(post.AuthorUserId)?.DisplayName
+                                    </strong>
+
+                                    <small class="text-muted">
+                                        @post.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+                                    </small>
+                                </div>
+
+                                <p class="mt-3">@post.Content</p>
+
+                                @if (post.ParentPostId != null)
+                                {
+                                    <span class="badge bg-light text-dark">
+                                        Reply to post #@post.ParentPostId
+                                    </span>
+                                }
+
+                                <div class="mt-3">
+
+                                    @if (CanWriteThread())
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary me-2"
+                                                @onclick="() => StartReply(post.Id)">
+                                            Reply
+                                        </button>
+                                    }
+
+                                    @if (post.AuthorUserId == UserState.CurrentUserId &&
+                                         CanWriteThread())
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => DeletePost(post.Id)">
+                                            Delete
+                                        </button>
+                                    }
+
+                                </div>
+
+                            </div>
+                        </div>
+                    }
+                }
+
+                @if (replyToPostId != null && CanWriteThread())
+                {
+                    <div class="card mt-4">
+                        <div class="card-body">
+
+                            <h5>Reply to post #@replyToPostId</h5>
+
+                            <textarea class="form-control mb-3"
+                                      rows="2"
+                                      @bind="replyContent"></textarea>
+
+                            <button class="btn btn-primary me-2"
+                                    @onclick="SubmitReply">
+                                Send Reply
+                            </button>
+
+                            <button class="btn btn-outline-secondary"
+                                    @onclick="CancelReply">
+                                Cancel
+                            </button>
+
+                        </div>
+                    </div>
+                }
             }
         }
     }
@@ -226,20 +280,27 @@
     private string newPostContent = "";
     private string replyContent = "";
     private string joinAccessCode = "";
+    private string joinMessage = "";
     private string message = "";
 
     private int? replyToPostId;
     private bool studentLoaded;
+    private bool joinSuccessful;
 
     protected override void OnParametersSet()
     {
         currentThread = ThreadService.GetThreadById(ThreadId);
 
         message = "";
+        joinMessage = "";
         joinAccessCode = "";
         replyToPostId = null;
+        joinSuccessful = false;
     }
 
+    /// <summary>
+    /// Checks whether the selected user is an auditor.
+    /// </summary>
     private bool IsAuditor()
     {
         if (UserState.CurrentUserId == null)
@@ -252,6 +313,26 @@
             .IsAuditor == true;
     }
 
+    /// <summary>
+    /// Checks whether the student has joined the thread.
+    /// </summary>
+    private bool IsMember()
+    {
+        if (currentThread == null ||
+            UserState.CurrentUserId == null)
+        {
+            return false;
+        }
+
+        return currentThread.MemberUserIds.Contains(
+            UserState.CurrentUserId.Value
+        );
+    }
+
+    /// <summary>
+    /// Checks whether the student can read the thread.
+    /// Auditors can read private threads without joining.
+    /// </summary>
     private bool CanViewThread()
     {
         if (currentThread == null ||
@@ -266,6 +347,10 @@
         );
     }
 
+    /// <summary>
+    /// Checks whether the student can write in the thread.
+    /// Private threads require membership, including for auditors.
+    /// </summary>
     private bool CanWriteThread()
     {
         if (currentThread == null ||
@@ -274,14 +359,12 @@
             return false;
         }
 
-        // Auditor read access does not automatically grant
-        // permission to write in a private thread.
-        return !currentThread.IsPrivate ||
-               currentThread.MemberUserIds.Contains(
-                   UserState.CurrentUserId.Value
-               );
+        return !currentThread.IsPrivate || IsMember();
     }
 
+    /// <summary>
+    /// Returns only posts the selected user is allowed to read.
+    /// </summary>
     private List<Post> GetVisiblePosts()
     {
         if (UserState.CurrentUserId == null ||
@@ -296,11 +379,19 @@
         );
     }
 
-    private void JoinPrivateThread()
+    /// <summary>
+    /// Joins a public or private thread.
+    /// Private threads require a code, except for auditors.
+    /// </summary>
+    private void JoinThread()
     {
+        joinSuccessful = false;
+        joinMessage = "";
+
         if (UserState.CurrentUserId == null ||
             currentThread == null)
         {
+            joinMessage = "Please select a student first.";
             return;
         }
 
@@ -312,15 +403,21 @@
 
         if (joined)
         {
+            joinSuccessful = true;
+            joinMessage = "You joined the thread successfully! It will now appear in My Threads.";
             joinAccessCode = "";
-            message = "You joined the thread successfully!";
         }
         else
         {
-            message = "Incorrect secret code. Please try again.";
+            joinMessage = currentThread.IsPrivate && !IsAuditor()
+                ? "Incorrect secret code. Please try again."
+                : "Could not join the thread.";
         }
     }
 
+    /// <summary>
+    /// Creates a new post.
+    /// </summary>
     private void AddPost()
     {
         if (UserState.CurrentUserId == null ||
@@ -346,6 +443,9 @@
         message = "Post created successfully!";
     }
 
+    /// <summary>
+    /// Starts replying to a post.
+    /// </summary>
     private void StartReply(int postId)
     {
         if (!CanWriteThread())
@@ -357,6 +457,9 @@
         replyContent = "";
     }
 
+    /// <summary>
+    /// Creates a reply to another post.
+    /// </summary>
     private void SubmitReply()
     {
         if (UserState.CurrentUserId == null ||
@@ -384,6 +487,9 @@
         message = "Reply sent successfully!";
     }
 
+    /// <summary>
+    /// Deletes a post only if the selected user wrote it.
+    /// </summary>
     private void DeletePost(int postId)
     {
         if (UserState.CurrentUserId == null ||
@@ -402,12 +508,18 @@
             : "You can only delete your own posts.";
     }
 
+    /// <summary>
+    /// Cancels replying.
+    /// </summary>
     private void CancelReply()
     {
         replyToPostId = null;
         replyContent = "";
     }
 
+    /// <summary>
+    /// Restores the selected student after refreshing the page.
+    /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
