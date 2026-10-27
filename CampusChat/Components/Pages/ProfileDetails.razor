@@ -1,0 +1,344 @@
+﻿
+@page "/profiles/{UserId:int}"
+@rendermode InteractiveServer
+
+@using CampusChat.Models
+@using CampusChat.Services
+
+@inject ProfileService ProfileService
+@inject UserService UserService
+@inject UserStateService UserState
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
+
+<PageTitle>Student Profile - CampusChat</PageTitle>
+
+<div class="container-fluid px-0">
+
+    <a href="/profiles" class="btn btn-outline-secondary mb-4">
+        Back to Profiles
+    </a>
+
+    @if (!studentLoaded)
+    {
+        <p>Loading profile...</p>
+    }
+    else if (profile == null)
+    {
+        <div class="alert alert-warning">
+            Student profile not found.
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+
+                <div class="d-flex align-items-center gap-3 mb-4">
+
+                    <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                         style="background-color: @profile.AvatarColor; width: 70px; height: 70px; font-size: 30px;">
+                        @GetInitial(profile.DisplayName)
+                    </div>
+
+                    <div>
+                        <h2 class="fw-bold mb-1">
+                            @profile.DisplayName
+                        </h2>
+
+                        <p class="text-muted mb-1">
+                            Study Year @profile.StudyYear
+                        </p>
+
+                        @if (profile.IsAuditor)
+                        {
+                            <span class="badge bg-info text-dark">
+                                Auditor
+                            </span>
+                        }
+                    </div>
+
+                </div>
+
+                <h5>About</h5>
+                <p class="text-muted">
+                    @(string.IsNullOrWhiteSpace(profile.Bio)
+                        ? "No biography added yet."
+                        : profile.Bio)
+                </p>
+
+                @if (IsOwnProfile())
+                {
+                    <button class="btn btn-primary mt-2"
+                            @onclick="StartEditing">
+                        @(isEditing ? "Editing Profile" : "Edit My Profile")
+                    </button>
+                }
+
+            </div>
+        </div>
+
+        @if (isEditing && IsOwnProfile())
+        {
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+
+                    <h4 class="fw-bold mb-3">Edit My Profile</h4>
+
+                    <div class="mb-3">
+                        <label class="form-label">Display Name</label>
+                        <input class="form-control"
+                               maxlength="60"
+                               @bind="editDisplayName" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Bio</label>
+                        <textarea class="form-control"
+                                  rows="3"
+                                  maxlength="500"
+                                  @bind="editBio"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Study Year</label>
+                        <input type="number"
+                               class="form-control"
+                               min="1"
+                               max="6"
+                               @bind="editStudyYear" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Avatar Color</label>
+                        <input type="color"
+                               class="form-control form-control-color"
+                               @bind="editAvatarColor" />
+                    </div>
+
+                    <button class="btn btn-primary me-2"
+                            @onclick="SaveProfile">
+                        Save Changes
+                    </button>
+
+                    <button class="btn btn-outline-secondary"
+                            @onclick="CancelEditing">
+                        Cancel
+                    </button>
+
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="alert @(saveSuccessful ? "alert-success" : "alert-warning") mb-4">
+                @message
+            </div>
+        }
+
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4">
+
+                <h4 class="fw-bold mb-3">Joined Threads</h4>
+
+                @if (!GetVisibleJoinedThreads().Any())
+                {
+                    <p class="text-muted mb-0">
+                        No visible joined threads yet.
+                    </p>
+                }
+                else
+                {
+                    @foreach (var thread in GetVisibleJoinedThreads())
+                    {
+                        <div class="border rounded-3 p-3 mb-3">
+
+                            <div class="d-flex justify-content-between align-items-center gap-3">
+                                <div>
+                                    <h5 class="mb-1">@thread.Name</h5>
+
+                                    <span class="badge @(thread.IsPrivate ? "bg-secondary" : "bg-success")">
+                                        @(thread.IsPrivate ? "Private" : "Public")
+                                    </span>
+                                </div>
+
+                                <a class="btn btn-outline-primary btn-sm"
+                                   href="@($"/threads/{thread.Id}")">
+                                    Open Thread
+                                </a>
+                            </div>
+
+                        </div>
+                    }
+                }
+
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int UserId { get; set; }
+
+    private User? profile;
+
+    private bool studentLoaded;
+    private bool isEditing;
+    private bool saveSuccessful;
+
+    private string editDisplayName = "";
+    private string editBio = "";
+    private int editStudyYear = 1;
+    private string editAvatarColor = "#4F46E5";
+    private string message = "";
+
+    protected override void OnParametersSet()
+    {
+        profile = ProfileService.GetProfileById(UserId);
+
+        isEditing = false;
+        saveSuccessful = false;
+        message = "";
+    }
+
+    /// <summary>
+    /// Returns the first letter of the display name.
+    /// </summary>
+    private string GetInitial(string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            return "?";
+        }
+
+        return displayName.Trim()[0].ToString().ToUpper();
+    }
+
+    /// <summary>
+    /// Only the selected student can edit their own profile.
+    /// </summary>
+    private bool IsOwnProfile()
+    {
+        return studentLoaded &&
+               profile != null &&
+               UserState.CurrentUserId == profile.Id;
+    }
+
+    /// <summary>
+    /// Starts editing the current student's profile.
+    /// </summary>
+    private void StartEditing()
+    {
+        if (!IsOwnProfile() || profile == null)
+        {
+            return;
+        }
+
+        editDisplayName = profile.DisplayName;
+        editBio = profile.Bio;
+        editStudyYear = profile.StudyYear;
+        editAvatarColor = profile.AvatarColor;
+
+        isEditing = true;
+        message = "";
+    }
+
+    /// <summary>
+    /// Saves profile changes through ProfileService.
+    /// </summary>
+    private void SaveProfile()
+    {
+        if (!IsOwnProfile() ||
+            profile == null ||
+            UserState.CurrentUserId == null)
+        {
+            message = "You can only edit your own profile.";
+            saveSuccessful = false;
+            return;
+        }
+
+        bool updated = ProfileService.UpdateProfile(
+            profile.Id,
+            UserState.CurrentUserId.Value,
+            editDisplayName,
+            editBio,
+            editStudyYear,
+            editAvatarColor
+        );
+
+        if (updated)
+        {
+            saveSuccessful = true;
+            message = "Profile updated successfully!";
+            isEditing = false;
+        }
+        else
+        {
+            saveSuccessful = false;
+            message = "Could not update profile. Check your name, study year and avatar color.";
+        }
+    }
+
+    /// <summary>
+    /// Cancels editing without saving changes.
+    /// </summary>
+    private void CancelEditing()
+    {
+        isEditing = false;
+        message = "";
+    }
+
+    /// <summary>
+    /// Lists public joined threads and private joined threads
+    /// that the current viewer is allowed to read.
+    /// </summary>
+    private List<CampusChat.Models.Thread> GetVisibleJoinedThreads()
+    {
+        if (profile == null)
+        {
+            return new List<CampusChat.Models.Thread>();
+        }
+
+        return ProfileService.GetJoinedThreads(profile.Id)
+            .Where(thread =>
+                !thread.IsPrivate ||
+                (UserState.CurrentUserId != null &&
+                 (thread.MemberUserIds.Contains(UserState.CurrentUserId.Value) ||
+                  UserService.GetUserById(UserState.CurrentUserId.Value)?.IsAuditor == true)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Restores the selected student after a page refresh.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await SessionStorage.GetAsync<int>(
+                "SelectedStudentId"
+            );
+
+            if (result.Success &&
+                UserService.GetUserById(result.Value) != null)
+            {
+                UserState.SetCurrentUser(result.Value);
+            }
+        }
+        catch (Exception)
+        {
+            message = "Could not restore student selection.";
+        }
+        finally
+        {
+            studentLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
