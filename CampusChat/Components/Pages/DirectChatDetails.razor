@@ -1,0 +1,349 @@
+﻿
+@page "/direct-chats/{ChatId:int}"
+@rendermode InteractiveServer
+@implements IDisposable
+
+@using CampusChat.Models
+@using CampusChat.Services
+
+@inject DirectChatService DirectChatService
+@inject UserService UserService
+@inject UserStateService UserState
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
+
+<PageTitle>Direct Chat - CampusChat</PageTitle>
+
+<div class="container-fluid px-0">
+
+    <a href="/direct-chats" class="btn btn-outline-secondary mb-4">
+        Back to Direct Chats
+    </a>
+
+    @if (!studentLoaded)
+    {
+        <p>Loading conversation...</p>
+    }
+    else if (UserState.CurrentUserId == null)
+    {
+        <div class="alert alert-warning">
+            Please <a href="/login">select a student</a>
+            to view direct chats.
+        </div>
+    }
+    else if (currentChat == null)
+    {
+        <div class="alert alert-warning">
+            Conversation not found or you do not have permission to view it.
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+
+                <h2 class="fw-bold mb-2">
+                    @GetStudentName(currentChat.User1Id)
+                    ↔
+                    @GetStudentName(currentChat.User2Id)
+                </h2>
+
+                <p class="text-muted mb-2">
+                    Private conversation
+                </p>
+
+                @if (CanSendMessages())
+                {
+                    <span class="badge bg-success">
+                        Participant
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-info text-dark">
+                        Auditor - Read Only
+                    </span>
+                }
+
+            </div>
+        </div>
+
+        @if (!CanSendMessages())
+        {
+            <div class="alert alert-info mb-4">
+                <strong>Auditor access:</strong>
+                You can read this conversation,
+                but you cannot send messages because
+                you are not one of its participants.
+            </div>
+        }
+        else
+        {
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+
+                    <h4 class="fw-bold mb-3">Send a Message</h4>
+
+                    <textarea class="form-control mb-3"
+                              rows="3"
+                              maxlength="2000"
+                              placeholder="Write your message..."
+                              @bind="newMessageContent"></textarea>
+
+                    <button class="btn btn-primary"
+                            @onclick="SendMessage">
+                        Send Message
+                    </button>
+
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="alert @(actionSuccessful ? "alert-success" : "alert-warning") mb-4">
+                @message
+            </div>
+        }
+
+        <h3 class="fw-bold mb-3">Messages</h3>
+
+        @if (!visibleMessages.Any())
+        {
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4 text-muted">
+                    No messages yet.
+                    Start the conversation by sending a message.
+                </div>
+            </div>
+        }
+        else
+        {
+            @foreach (var chatMessage in visibleMessages)
+            {
+                <div class="card border-0 shadow-sm rounded-4 mb-3"
+                     @key="chatMessage.Id">
+                    <div class="card-body p-4">
+
+                        <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
+                            <strong>
+                                @GetStudentName(chatMessage.SenderUserId)
+                            </strong>
+
+                            <small class="text-muted">
+                                @chatMessage.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+                            </small>
+                        </div>
+
+                        <p class="mb-0" style="white-space: pre-wrap;">
+                            @chatMessage.Content
+                        </p>
+
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int ChatId { get; set; }
+
+    private DirectChat? currentChat;
+    private List<DirectMessage> visibleMessages = new();
+
+    private System.Threading.Timer? refreshTimer;
+    private bool disposed;
+
+    private bool studentLoaded;
+    private bool actionSuccessful;
+
+    private string newMessageContent = "";
+    private string message = "";
+
+    /// <summary>
+    /// Loads the conversation and its visible messages.
+    /// </summary>
+    private void LoadChat()
+    {
+        if (UserState.CurrentUserId == null)
+        {
+            currentChat = null;
+            visibleMessages = new List<DirectMessage>();
+            return;
+        }
+
+        int userId = UserState.CurrentUserId.Value;
+
+        currentChat = DirectChatService.GetChatById(ChatId, userId);
+
+        visibleMessages = currentChat == null
+            ? new List<DirectMessage>()
+            : DirectChatService.GetMessages(ChatId, userId);
+    }
+
+    /// <summary>
+    /// Returns the display name of a student.
+    /// </summary>
+    private string GetStudentName(int userId)
+    {
+        return UserService.GetUserById(userId)?.DisplayName
+               ?? "Unknown Student";
+    }
+
+    /// <summary>
+    /// Checks whether the selected student can send messages.
+    /// </summary>
+    private bool CanSendMessages()
+    {
+        if (UserState.CurrentUserId == null)
+        {
+            return false;
+        }
+
+        return DirectChatService.CanSendMessage(
+            ChatId,
+            UserState.CurrentUserId.Value
+        );
+    }
+
+    /// <summary>
+    /// Sends a message and immediately refreshes the list.
+    /// </summary>
+    private void SendMessage()
+    {
+        actionSuccessful = false;
+        message = "";
+
+        if (UserState.CurrentUserId == null ||
+            !CanSendMessages())
+        {
+            message = "You do not have permission to send messages here.";
+            return;
+        }
+
+        var sentMessage = DirectChatService.SendMessage(
+            ChatId,
+            UserState.CurrentUserId.Value,
+            newMessageContent
+        );
+
+        if (sentMessage == null)
+        {
+            message = "Could not send message. Please enter some text.";
+            return;
+        }
+
+        newMessageContent = "";
+        actionSuccessful = true;
+        message = "Message sent successfully!";
+
+        LoadChat();
+    }
+
+    /// <summary>
+    /// Checks for new messages every second.
+    /// Blazor safely updates the page through InvokeAsync.
+    /// </summary>
+    private async Task RefreshMessages()
+    {
+        if (disposed || !studentLoaded)
+        {
+            return;
+        }
+
+        await InvokeAsync(() =>
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            if (UserState.CurrentUserId == null)
+            {
+                return;
+            }
+
+            var latestMessages = DirectChatService.GetMessages(
+                ChatId,
+                UserState.CurrentUserId.Value
+            );
+
+            bool messagesChanged =
+                latestMessages.Count != visibleMessages.Count ||
+                (latestMessages.Count > 0 &&
+                 visibleMessages.Count > 0 &&
+                 latestMessages[0].Id != visibleMessages[0].Id);
+
+            if (messagesChanged)
+            {
+                visibleMessages = latestMessages;
+                StateHasChanged();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Restores the selected student and starts live updates.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await SessionStorage.GetAsync<int>(
+                "SelectedStudentId"
+            );
+
+            if (result.Success &&
+                UserService.GetUserById(result.Value) != null)
+            {
+                UserState.SetCurrentUser(result.Value);
+            }
+        }
+        catch (Exception)
+        {
+            message = "Could not restore student selection.";
+        }
+        finally
+        {
+            LoadChat();
+            studentLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        refreshTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                try
+                {
+                    await RefreshMessages();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The page was closed.
+                }
+                catch (InvalidOperationException)
+                {
+                    // The Blazor circuit may have disconnected.
+                }
+            },
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1)
+        );
+    }
+
+    /// <summary>
+    /// Stops automatic updates when leaving the page.
+    /// </summary>
+    public void Dispose()
+    {
+        disposed = true;
+        refreshTimer?.Dispose();
+    }
+}
