@@ -1,14 +1,83 @@
-﻿@page "/"
+﻿
+@page "/"
 
 <PageTitle>CampusChat - Home</PageTitle>
 
-<h1>Welcome to CampusChat</h1>
+<div class="container-fluid px-0">
 
-<p class="lead">
-    CampusChat is a place where students can
-    connect, discuss topics, and communicate.
-</p>
+    <div class="p-4 p-md-5 bg-light rounded-4 mb-4">
+        <h1 class="fw-bold mb-3">
+            Welcome to CampusChat
+        </h1>
 
-<p>
-    Select a feature from the left sidebar to get started.
-</p>
+        <p class="lead text-muted mb-4">
+            Connect with students, join discussions,
+            and communicate in one place.
+        </p>
+
+        <a href="/login" class="btn btn-primary">
+            Get Started
+        </a>
+    </div>
+
+    <h3 class="fw-bold mb-4">Explore CampusChat</h3>
+
+    <div class="row g-4">
+
+        <div class="col-12 col-md-4">
+            <div class="card h-100 border rounded-4 shadow-sm">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold">Discussion Threads</h5>
+
+                    <p class="text-muted">
+                        Create, browse, and join public
+                        or private discussions.
+                    </p>
+
+                    <a href="/threads"
+                       class="btn btn-outline-primary">
+                        View Threads
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+            <div class="card h-100 border rounded-4 shadow-sm">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold">Direct Chats</h5>
+
+                    <p class="text-muted">
+                        Send private messages and
+                        communicate with other students.
+                    </p>
+
+                    <a href="/direct-chats"
+                       class="btn btn-outline-primary">
+                        Open Chats
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+            <div class="card h-100 border rounded-4 shadow-sm">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold">Student Profiles</h5>
+
+                    <p class="text-muted">
+                        Explore student profiles and
+                        manage your own information.
+                    </p>
+
+                    <a href="/profiles"
+                       class="btn btn-outline-primary">
+                        View Profiles
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
