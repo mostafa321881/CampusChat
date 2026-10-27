@@ -1,11 +1,13 @@
 ﻿
 @page "/my-threads"
 @rendermode InteractiveServer
+@implements IDisposable
 
 @using CampusChat.Services
 @using CampusChat.Models
 
 @inject ThreadService ThreadService
+@inject UnreadService UnreadService
 @inject UserStateService UserState
 @inject UserService UserService
 @inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
@@ -78,7 +80,7 @@
 
                 @foreach (var thread in GetMyThreads())
                 {
-                    <div class="col-12 col-md-6 col-xl-4">
+                    <div class="col-12 col-md-6 col-xl-4" @key="thread.Id">
 
                         <div class="card h-100 border rounded-4 shadow-sm thread-card">
 
@@ -117,6 +119,25 @@
 
                                 <div class="small text-muted mb-3">
                                     @thread.MemberUserIds.Count members
+                                </div>
+
+                                <div class="mb-3">
+                                    @{
+                                        int unreadCount = GetUnreadCount(thread.Id);
+                                    }
+
+                                    @if (unreadCount > 0)
+                                    {
+                                        <span class="badge bg-danger">
+                                            @unreadCount unread
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-secondary border">
+                                            0 unread
+                                        </span>
+                                    }
                                 </div>
 
                                 <div class="mt-auto pt-3 border-top d-flex flex-wrap gap-2">
@@ -168,9 +189,13 @@
 </style>
 
 @code {
-    private bool studentLoaded = false;
-    private bool actionSuccessful = false;
+    private bool studentLoaded;
+    private bool actionSuccessful;
+    private bool disposed;
+
     private string message = "";
+
+    private System.Threading.Timer? refreshTimer;
 
     /// <summary>
     /// Returns only threads the selected student has joined.
@@ -190,6 +215,22 @@
     }
 
     /// <summary>
+    /// Returns the number of unread posts for the selected student.
+    /// </summary>
+    private int GetUnreadCount(int threadId)
+    {
+        if (UserState.CurrentUserId == null)
+        {
+            return 0;
+        }
+
+        return UnreadService.GetUnreadCount(
+            threadId,
+            UserState.CurrentUserId.Value
+        );
+    }
+
+    /// <summary>
     /// Removes the selected student from a thread.
     /// </summary>
     private void LeaveThread(int threadId)
@@ -203,13 +244,14 @@
             return;
         }
 
-        bool left = ThreadService.LeaveThread(
-            threadId,
-            UserState.CurrentUserId.Value
-        );
+        int userId = UserState.CurrentUserId.Value;
+
+        bool left = ThreadService.LeaveThread(threadId, userId);
 
         if (left)
         {
+            UnreadService.ClearThreadForUser(threadId, userId);
+
             actionSuccessful = true;
             message = "You have left the thread successfully.";
         }
@@ -220,7 +262,8 @@
     }
 
     /// <summary>
-    /// Restores the selected student after a page refresh.
+    /// Restores the selected student after a page refresh
+    /// and starts automatic unread-count updates.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -250,5 +293,46 @@
             studentLoaded = true;
             await InvokeAsync(StateHasChanged);
         }
+
+        refreshTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                try
+                {
+                    await InvokeAsync(() =>
+                    {
+                        if (!disposed)
+                        {
+                            StateHasChanged();
+                        }
+                    });
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The page has been closed.
+                }
+                catch (InvalidOperationException)
+                {
+                    // The Blazor connection has ended.
+                }
+            },
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1)
+        );
+    }
+
+    /// <summary>
+    /// Stops the timer when leaving the page.
+    /// </summary>
+    public void Dispose()
+    {
+        disposed = true;
+        refreshTimer?.Dispose();
     }
 }

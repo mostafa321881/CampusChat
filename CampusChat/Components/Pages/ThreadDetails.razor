@@ -1,12 +1,14 @@
 ﻿
 @page "/threads/{ThreadId:int}"
 @rendermode InteractiveServer
+@implements IDisposable
 
 @using CampusChat.Services
 @using CampusChat.Models
 
 @inject ThreadService ThreadService
 @inject PostService PostService
+@inject UnreadService UnreadService
 @inject UserService UserService
 @inject UserStateService UserState
 @inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage SessionStorage
@@ -74,9 +76,7 @@
                                 and read this discussion.
                             </p>
 
-                            <label class="form-label">
-                                Secret Code
-                            </label>
+                            <label class="form-label">Secret Code</label>
 
                             <input type="password"
                                    class="form-control mb-3"
@@ -159,6 +159,7 @@
 
                             <textarea class="form-control mb-3"
                                       rows="3"
+                                      maxlength="2000"
                                       placeholder="Write your message..."
                                       @bind="newPostContent"></textarea>
 
@@ -184,7 +185,7 @@
 
                 <h3 class="fw-bold mb-3">Discussion</h3>
 
-                @if (!GetVisiblePosts().Any())
+                @if (!visiblePosts.Any())
                 {
                     <p class="text-muted">
                         No posts yet. Start the discussion!
@@ -192,9 +193,9 @@
                 }
                 else
                 {
-                    @foreach (var post in GetVisiblePosts())
+                    @foreach (var post in visiblePosts)
                     {
-                        <div class="card mb-3">
+                        <div class="card mb-3" @key="post.Id">
                             <div class="card-body">
 
                                 <div class="d-flex justify-content-between gap-3">
@@ -251,6 +252,7 @@
 
                             <textarea class="form-control mb-3"
                                       rows="2"
+                                      maxlength="2000"
                                       @bind="replyContent"></textarea>
 
                             <button class="btn btn-primary me-2"
@@ -276,6 +278,7 @@
     public int ThreadId { get; set; }
 
     private CampusChat.Models.Thread? currentThread;
+    private List<Post> visiblePosts = new();
 
     private string newPostContent = "";
     private string replyContent = "";
@@ -284,8 +287,12 @@
     private string message = "";
 
     private int? replyToPostId;
+
     private bool studentLoaded;
     private bool joinSuccessful;
+    private bool disposed;
+
+    private System.Threading.Timer? refreshTimer;
 
     protected override void OnParametersSet()
     {
@@ -296,6 +303,8 @@
         joinAccessCode = "";
         replyToPostId = null;
         joinSuccessful = false;
+
+        LoadPosts();
     }
 
     /// <summary>
@@ -331,7 +340,6 @@
 
     /// <summary>
     /// Checks whether the student can read the thread.
-    /// Auditors can read private threads without joining.
     /// </summary>
     private bool CanViewThread()
     {
@@ -348,8 +356,7 @@
     }
 
     /// <summary>
-    /// Checks whether the student can write in the thread.
-    /// Private threads require membership, including for auditors.
+    /// Private threads require membership to write.
     /// </summary>
     private bool CanWriteThread()
     {
@@ -363,25 +370,32 @@
     }
 
     /// <summary>
-    /// Returns only posts the selected user is allowed to read.
+    /// Loads posts and marks them as read for joined students.
     /// </summary>
-    private List<Post> GetVisiblePosts()
+    private void LoadPosts()
     {
         if (UserState.CurrentUserId == null ||
             !CanViewThread())
         {
-            return new List<Post>();
+            visiblePosts = new List<Post>();
+            return;
         }
 
-        return PostService.GetPostsByThread(
+        int userId = UserState.CurrentUserId.Value;
+
+        visiblePosts = PostService.GetPostsByThread(
             ThreadId,
-            UserState.CurrentUserId.Value
+            userId
         );
+
+        if (IsMember())
+        {
+            UnreadService.MarkThreadAsRead(ThreadId, userId);
+        }
     }
 
     /// <summary>
     /// Joins a public or private thread.
-    /// Private threads require a code, except for auditors.
     /// </summary>
     private void JoinThread()
     {
@@ -395,17 +409,23 @@
             return;
         }
 
+        int userId = UserState.CurrentUserId.Value;
+
         bool joined = ThreadService.JoinThread(
             ThreadId,
-            UserState.CurrentUserId.Value,
+            userId,
             joinAccessCode
         );
 
         if (joined)
         {
+            UnreadService.InitializeThreadForUser(ThreadId, userId);
+
             joinSuccessful = true;
             joinMessage = "You joined the thread successfully! It will now appear in My Threads.";
             joinAccessCode = "";
+
+            LoadPosts();
         }
         else
         {
@@ -441,6 +461,8 @@
 
         newPostContent = "";
         message = "Post created successfully!";
+
+        LoadPosts();
     }
 
     /// <summary>
@@ -485,6 +507,8 @@
         replyContent = "";
         replyToPostId = null;
         message = "Reply sent successfully!";
+
+        LoadPosts();
     }
 
     /// <summary>
@@ -506,6 +530,8 @@
         message = deleted
             ? "Post deleted successfully!"
             : "You can only delete your own posts.";
+
+        LoadPosts();
     }
 
     /// <summary>
@@ -518,7 +544,57 @@
     }
 
     /// <summary>
-    /// Restores the selected student after refreshing the page.
+    /// Checks for new posts every second.
+    /// </summary>
+    private async Task RefreshPosts()
+    {
+        if (disposed || !studentLoaded)
+        {
+            return;
+        }
+
+        await InvokeAsync(() =>
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            if (UserState.CurrentUserId == null)
+            {
+                return;
+            }
+
+            var latestPosts = CanViewThread()
+                ? PostService.GetPostsByThread(
+                    ThreadId,
+                    UserState.CurrentUserId.Value)
+                : new List<Post>();
+
+            bool postsChanged =
+                latestPosts.Count != visiblePosts.Count ||
+                !latestPosts.Select(post => post.Id)
+                    .SequenceEqual(visiblePosts.Select(post => post.Id));
+
+            if (postsChanged)
+            {
+                visiblePosts = latestPosts;
+
+                if (IsMember())
+                {
+                    UnreadService.MarkThreadAsRead(
+                        ThreadId,
+                        UserState.CurrentUserId.Value
+                    );
+                }
+
+                StateHasChanged();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Restores the student selection and starts live updates.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -546,7 +622,38 @@
         finally
         {
             studentLoaded = true;
+            LoadPosts();
             await InvokeAsync(StateHasChanged);
         }
+
+        refreshTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                try
+                {
+                    await RefreshPosts();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The page was closed.
+                }
+                catch (InvalidOperationException)
+                {
+                    // The Blazor connection ended.
+                }
+            },
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1)
+        );
+    }
+
+    /// <summary>
+    /// Stops automatic updates when leaving the page.
+    /// </summary>
+    public void Dispose()
+    {
+        disposed = true;
+        refreshTimer?.Dispose();
     }
 }

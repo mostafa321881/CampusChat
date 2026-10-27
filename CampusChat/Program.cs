@@ -17,6 +17,7 @@ builder.Services.AddScoped<CampusChat.Services.UserStateService>();
 // Discussion threads and posts.
 builder.Services.AddSingleton<CampusChat.Services.ThreadService>();
 builder.Services.AddSingleton<CampusChat.Services.PostService>();
+builder.Services.AddSingleton<CampusChat.Services.UnreadService>();
 
 // Direct chats and private messages.
 builder.Services.AddSingleton<CampusChat.Services.DirectChatService>();
